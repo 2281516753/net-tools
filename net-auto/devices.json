@@ -1,0 +1,14 @@
+[
+    {
+        "host": "192.168.1.1",
+        "username": "admin",
+        "password": "",
+        "commands": ["display current-configuration"]
+    },
+    {
+        "host": "192.168.1.2",
+        "username": "admin",
+        "password": "",
+        "commands": ["display running-config", "display version"]
+    }
+]

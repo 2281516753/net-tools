@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network Diagnostics Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  * { font-family: 'Inter', sans-serif; }
+  body {
+    background: #0a0a0f;
+    color: #e0e0e0;
+  }
+  .card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(12px);
+    border-radius: 16px;
+    padding: 20px;
+    transition: border-color 0.3s;
+  }
+  .card:hover { border-color: rgba(255,107,53,0.3); }
+  .stat-value { font-size: 28px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 500;
+  }
+  .badge-ok { background: rgba(34,197,94,0.15); color: #22c55e; }
+  .badge-fail { background: rgba(239,68,68,0.15); color: #ef4444; }
+  .badge-warn { background: rgba(234,179,8,0.15); color: #eab308; }
+  .glow { box-shadow: 0 0 30px rgba(255,107,53,0.08); }
+  .btn {
+    padding: 8px 16px; border-radius: 10px;
+    font-size: 13px; font-weight: 500;
+    transition: all 0.2s; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
+    color: #ccc;
+  }
+  .btn:hover { background: rgba(255,107,53,0.15); border-color: rgba(255,107,53,0.3); }
+  .btn-primary {
+    background: linear-gradient(135deg, #ff6b35, #f7931e);
+    border: none; color: #fff;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  input {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 8px 14px;
+    color: #e0e0e0; font-size: 13px;
+    outline: none; width: 100%;
+  }
+  input:focus { border-color: #ff6b35; }
+  select {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 8px 14px;
+    color: #e0e0e0; font-size: 13px;
+    outline: none;
+  }
+  select:focus { border-color: #ff6b35; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { animation: spin 1s linear infinite; }
+  .loading::after {
+    content: ''; display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,107,53,0.3);
+    border-top-color: #ff6b35;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .progress-bar {
+    height: 6px; border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 3px;
+    transition: width 1s ease;
+    background: linear-gradient(90deg, #ff6b35, #f7931e);
+  }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+</style>
+</head>
+<body class="p-4 md:p-8 min-h-screen">
+
+<div class="max-w-6xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-8">
+    <div>
+      <h1 class="text-2xl font-bold bg-gradient-to-r from-orange-400 to-yellow-400 bg-clip-text text-transparent">
+        🌐 Network Diagnostics
+      </h1>
+      <p class="text-xs text-gray-500 mt-1">WSL System &amp; Network Dashboard</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="status-indicator" class="flex items-center gap-2 text-xs text-gray-400">
+        <span class="w-2 h-2 rounded-full bg-gray-500"></span> loading...
+      </span>
+      <button onclick="refreshAll()" class="btn btn-primary text-xs">
+        🔄 Refresh All
+      </button>
+    </div>
+  </div>
+
+  <!-- Grid -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+    <!-- Card: System -->
+    <div class="card glow" id="sys-card">
+      <div class="stat-label mb-2">🖥️ System</div>
+      <div class="stat-value text-lg" id="sys-hostname">—</div>
+      <div class="text-xs text-gray-500 mt-1" id="sys-platform">—</div>
+      <div class="mt-3 flex justify-between text-xs">
+        <span class="text-gray-400">Uptime</span>
+        <span id="sys-uptime" class="text-gray-300">—</span>
+      </div>
+      <div class="flex justify-between text-xs mt-1">
+        <span class="text-gray-400">Load</span>
+        <span id="sys-load" class="text-gray-300">—</span>
+      </div>
+    </div>
+
+    <!-- Card: Memory -->
+    <div class="card glow" id="mem-card">
+      <div class="stat-label mb-2">💾 Memory</div>
+      <div class="stat-value" id="mem-value">—</div>
+      <div class="text-xs text-gray-500 mt-1" id="mem-detail">—</div>
+      <div class="progress-bar mt-3"><div class="progress-fill" id="mem-bar" style="width:0%"></div></div>
+      <div class="text-xs text-right mt-1 text-gray-500" id="mem-pct">0%</div>
+    </div>
+
+    <!-- Card: Disk -->
+    <div class="card glow" id="disk-card">
+      <div class="stat-label mb-2">💿 Disk</div>
+      <div class="stat-value" id="disk-value">—</div>
+      <div class="text-xs text-gray-500 mt-1" id="disk-detail">—</div>
+      <div class="progress-bar mt-3"><div class="progress-fill" id="disk-bar" style="width:0%"></div></div>
+      <div class="text-xs text-right mt-1 text-gray-500" id="disk-pct">0%</div>
+    </div>
+
+    <!-- Card: Proxy -->
+    <div class="card glow" id="proxy-card">
+      <div class="stat-label mb-2">🛡️ Proxy (mihomo)</div>
+      <div id="proxy-status" class="stat-value text-lg">—</div>
+      <div class="text-xs text-gray-500 mt-1" id="proxy-port">—</div>
+      <div class="mt-3 flex justify-between text-xs">
+        <span class="text-gray-400">HTTP</span>
+        <span id="proxy-http" class="text-gray-300">—</span>
+      </div>
+      <div class="flex justify-between text-xs mt-1">
+        <span class="text-gray-400">HTTPS</span>
+        <span id="proxy-https" class="text-gray-300">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connectivity -->
+  <div class="card glow mb-6">
+    <div class="flex justify-between items-center mb-4">
+      <div>
+        <div class="stat-label">🌍 Connectivity Check</div>
+        <div class="text-xs text-gray-500 mt-0.5" id="conn-timestamp">—</div>
+      </div>
+      <button onclick="loadConnectivity()" class="btn text-xs">🔄 Test</button>
+    </div>
+    <div id="conn-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="text-center py-6 text-gray-500 text-sm">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Tools Row -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+    <!-- Port Check -->
+    <div class="card glow">
+      <div class="stat-label mb-3">🔌 Port Check</div>
+      <div class="flex gap-2 mb-3">
+        <input type="text" id="port-host" placeholder="Host (e.g. google.com)" class="flex-1" value="google.com">
+        <input type="number" id="port-num" placeholder="Port" class="w-24" value="80">
+        <button onclick="checkPort()" class="btn btn-primary text-xs whitespace-nowrap">Check</button>
+      </div>
+      <div id="port-result" class="text-xs text-gray-500">Enter a host and port to check</div>
+    </div>
+
+    <!-- DNS Lookup -->
+    <div class="card glow">
+      <div class="stat-label mb-3">🕵️ DNS Lookup</div>
+      <div class="flex gap-2 mb-3">
+        <input type="text" id="dns-domain" placeholder="Domain (e.g. github.com)" class="flex-1" value="github.com">
+        <button onclick="dnsLookup()" class="btn btn-primary text-xs whitespace-nowrap">Resolve</button>
+      </div>
+      <div id="dns-result" class="text-xs text-gray-500">Enter a domain to resolve</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="text-center text-xs text-gray-600 mt-8 pb-4">
+    Built with Hermes Agent + DeepSeek V4 · 
+    <span id="footer-time"></span>
+  </div>
+</div>
+
+<script>
+// ─── Load All Data ──────────────────────────────────────────────────────
+
+async function fetchJSON(url, opts = {}) {
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+async function refreshAll() {
+  setStatus('loading', 'refreshing...');
+  await Promise.all([loadSystem(), loadConnectivity(), loadProxy()]);
+  setStatus('ok', 'updated');
+}
+
+// ─── System ──────────────────────────────────────────────────────────────
+
+async function loadSystem() {
+  try {
+    const d = await fetchJSON('/api/system');
+    document.getElementById('sys-hostname').textContent = d.hostname || '—';
+    document.getElementById('sys-platform').textContent = `${d.platform} ${d.release}`;
+    document.getElementById('sys-uptime').textContent = d.uptime || '—';
+    document.getElementById('sys-load').textContent = d.load_avg || '—';
+
+    const mem = d.memory;
+    document.getElementById('mem-value').textContent = `${mem.used} / ${mem.total}`;
+    document.getElementById('mem-detail').textContent = `${mem.used} used of ${mem.total}`;
+    const memPct = Math.min(mem.percent || 0, 100);
+    document.getElementById('mem-bar').style.width = memPct + '%';
+    document.getElementById('mem-pct').textContent = memPct + '%';
+
+    const disk = d.disk;
+    document.getElementById('disk-value').textContent = disk.used || '—';
+    document.getElementById('disk-detail').textContent = `${disk.avail || '—'} available of ${disk.total || '—'}`;
+    const diskPct = Math.min(parseInt(disk.percent) || 0, 100);
+    document.getElementById('disk-bar').style.width = diskPct + '%';
+    document.getElementById('disk-pct').textContent = diskPct + '%';
+  } catch(e) {
+    console.error('system:', e);
+  }
+}
+
+// ─── Connectivity ────────────────────────────────────────────────────────
+
+async function loadConnectivity() {
+  const grid = document.getElementById('conn-grid');
+  grid.innerHTML = '<div class="col-span-full text-center py-6 text-gray-500"><span class="spinner inline-block w-5 h-5 border-2 border-orange-500/30 border-t-orange-500 rounded-full"></span> Testing...</div>';
+
+  try {
+    const d = await fetchJSON('/api/connectivity');
+    document.getElementById('conn-timestamp').textContent = `Updated: ${new Date(d.timestamp).toLocaleTimeString()}`;
+
+    let html = '';
+    for (const site of d.results) {
+      const ok = site.http.status === 'reachable';
+      html += `
+        <div class="text-center p-3 rounded-xl ${ok ? 'bg-green-900/10' : 'bg-red-900/10'}">
+          <div class="text-sm font-medium mb-1">${site.name}</div>
+          <div class="text-xs text-gray-400 truncate" title="${site.url}">${site.url.replace('https://','')}</div>
+          <div class="mt-2">
+            <span class="badge ${ok ? 'badge-ok' : 'badge-fail'}">${ok ? '✓ OK' : '✗ Fail'}</span>
+          </div>
+          <div class="text-xs text-gray-500 mt-1">${site.http.detail}</div>
+        </div>`;
+    }
+    grid.innerHTML = html;
+  } catch(e) {
+    grid.innerHTML = '<div class="col-span-full text-center py-6 text-red-400">Failed to load connectivity data</div>';
+  }
+}
+
+// ─── Proxy ───────────────────────────────────────────────────────────────
+
+async function loadProxy() {
+  try {
+    const d = await fetchJSON('/api/proxy-status');
+    const running = d.running;
+    document.getElementById('proxy-status').innerHTML = running
+      ? '<span class="text-green-400">🟢 Running</span>'
+      : '<span class="text-red-400">🔴 Stopped</span>';
+    document.getElementById('proxy-port').textContent = `Port 7890: ${d.proxy_port_7890}`;
+    document.getElementById('proxy-http').textContent = d.http_proxy || 'not set';
+    document.getElementById('proxy-https').textContent = d.https_proxy || 'not set';
+  } catch(e) {
+    console.error('proxy:', e);
+  }
+}
+
+// ─── Port Check ──────────────────────────────────────────────────────────
+
+async function checkPort() {
+  const host = document.getElementById('port-host').value.trim();
+  const port = parseInt(document.getElementById('port-num').value);
+  const result = document.getElementById('port-result');
+
+  if (!host || !port) { result.textContent = 'Please enter host and port'; return; }
+
+  result.innerHTML = '<span class="spinner inline-block w-3 h-3 border-2 border-orange-500/30 border-t-orange-500 rounded-full mr-1"></span> Checking...';
+  try {
+    const d = await fetchJSON('/api/port-check', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({host, port})
+    });
+    result.innerHTML = d.open
+      ? `<span class="text-green-400">✓ Port ${port} on ${host} is OPEN</span>`
+      : `<span class="text-red-400">✗ ${d.message}</span>`;
+  } catch(e) {
+    result.textContent = 'Error checking port';
+  }
+}
+
+// ─── DNS Lookup ──────────────────────────────────────────────────────────
+
+async function dnsLookup() {
+  const domain = document.getElementById('dns-domain').value.trim();
+  const result = document.getElementById('dns-result');
+
+  if (!domain) { result.textContent = 'Please enter a domain'; return; }
+
+  result.innerHTML = '<span class="spinner inline-block w-3 h-3 border-2 border-orange-500/30 border-t-orange-500 rounded-full mr-1"></span> Resolving...';
+  try {
+    const d = await fetchJSON('/api/dns-lookup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({domain})
+    });
+    if (d.ips && d.ips.length > 0) {
+      result.innerHTML = `<span class="text-green-400">✓ ${domain}</span><br><span class="text-gray-400 text-xs">${d.ips.join(', ')}</span>`;
+    } else {
+      result.innerHTML = `<span class="text-red-400">✗ ${d.error || 'No records found'}</span>`;
+    }
+  } catch(e) {
+    result.textContent = 'Error resolving domain';
+  }
+}
+
+// ─── Status ──────────────────────────────────────────────────────────────
+
+function setStatus(type, msg) {
+  const el = document.getElementById('status-indicator');
+  const dot = el.querySelector('span');
+  if (type === 'ok') {
+    dot.className = 'w-2 h-2 rounded-full bg-green-500';
+    el.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500"></span> ${msg}`;
+  } else if (type === 'loading') {
+    dot.className = 'w-2 h-2 rounded-full bg-yellow-500';
+    el.innerHTML = `<span class="w-2 h-2 rounded-full bg-yellow-500"></span> ${msg}`;
+  } else {
+    dot.className = 'w-2 h-2 rounded-full bg-gray-500';
+  }
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  refreshAll();
+  document.getElementById('footer-time').textContent = new Date().toLocaleString();
+  setInterval(() => {
+    document.getElementById('footer-time').textContent = new Date().toLocaleString();
+  }, 1000);
+  // Auto-refresh connectivity every 30s
+  setInterval(loadConnectivity, 30000);
+});
+</script>
+</body>
+</html>

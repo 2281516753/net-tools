@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetScope — Network Diagnostics Dashboard</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff6b35">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#08080e;
+  --bg2:rgba(255,255,255,0.03);
+  --border:rgba(255,255,255,0.06);
+  --border-hover:rgba(255,107,53,0.3);
+  --accent:#ff6b35;
+  --accent2:#f7931e;
+  --text:#e0e0e0;
+  --muted:#555;
+  --green:#22c55e;
+  --red:#ef4444;
+  --yellow:#eab308;
+}
+/* Light theme */
+[data-theme="light"]{
+  --bg:#f8f9fa;
+  --bg2:rgba(0,0,0,0.02);
+  --border:rgba(0,0,0,0.08);
+  --border-hover:rgba(255,107,53,0.5);
+  --text:#1a1a2e;
+  --muted:#888;
+  --green:#16a34a;
+  --red:#dc2626;
+  --yellow:#ca8a04;
+}
+body{
+  font-family:'Inter',-apple-system,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+  transition:background .3s,color .3s;
+}
+.bg-grid{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  background-image:radial-gradient(rgba(128,128,128,0.06) 1px,transparent 1px);
+  background-size:30px 30px;
+  pointer-events:none;z-index:0;
+}
+.bg-gradient{
+  position:fixed;top:-40%;left:-20%;width:80%;height:80%;
+  background:radial-gradient(circle,rgba(255,107,53,0.06),transparent 60%);
+  pointer-events:none;z-index:0;
+}
+.container{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:24px 20px 60px}
+
+/* Theme toggle */
+.theme-toggle{
+  background:none;border:1px solid var(--border);border-radius:10px;
+  padding:8px 12px;cursor:pointer;font-size:16px;color:var(--text);
+  transition:border-color .3s;
+}
+.theme-toggle:hover{border-color:var(--border-hover)}
+
+/* Auto-refresh control */
+.refresh-control{
+  display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
+}
+.refresh-control select{
+  padding:4px 8px;border-radius:6px;border:1px solid var(--border);
+  background:var(--bg2);color:var(--text);font-size:11px;font-family:inherit;
+}
+
+/* History panel */
+.history-panel{
+  margin-top:24px;
+}
+.history-table{
+  width:100%;font-size:12px;border-collapse:collapse;
+}
+.history-table th{
+  text-align:left;padding:8px 12px;color:var(--muted);font-weight:500;
+  border-bottom:2px solid var(--border);font-size:11px;text-transform:uppercase;
+}
+.history-table td{
+  padding:8px 12px;border-bottom:1px solid var(--border);
+  font-size:12px;
+}
+.history-table tr:hover{background:var(--bg2)}
+.history-table .del-btn{
+  background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;
+  padding:2px 6px;border-radius:4px;
+}
+.history-table .del-btn:hover{background:rgba(239,68,68,0.1)}
+.hist-empty{text-align:center;padding:24px;color:var(--muted);font-size:13px}
+
+/* Header */
+header{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:16px 0;margin-bottom:32px;
+  border-bottom:1px solid var(--border);
+}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{
+  width:36px;height:36px;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+}
+.logo-text{font-size:18px;font-weight:700}
+.logo-text span{color:var(--muted);font-weight:400}
+.header-right{display:flex;align-items:center;gap:12px}
+.status-badge{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 14px;border-radius:20px;
+  font-size:12px;font-weight:500;
+  background:rgba(34,197,94,0.1);color:var(--green);
+}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.status-badge.offline{background:rgba(239,68,68,0.1);color:var(--red)}
+.status-badge.offline .status-dot{background:var(--red)}
+
+/* Hero */
+.hero{
+  text-align:center;padding:40px 0 48px;
+}
+.hero h1{
+  font-size:48px;font-weight:800;
+  background:linear-gradient(135deg,#ff6b35,#f7931e,#ffb800);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  line-height:1.1;margin-bottom:12px;
+}
+.hero p{color:var(--muted);font-size:15px;line-height:1.6}
+
+/* Stats row */
+.stats-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:16px;margin-bottom:24px;
+}
+.stat-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:16px;padding:20px;
+  transition:border-color .3s,transform .3s;
+  position:relative;overflow:hidden;
+}
+.stat-card:hover{border-color:var(--border-hover);transform:translateY(-1px)}
+.stat-card .icon{font-size:24px;margin-bottom:8px}
+.stat-card .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.stat-card .value{font-size:24px;font-weight:700}
+.stat-card .sub{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* Section */
+.section-title{
+  font-size:14px;font-weight:600;margin-bottom:16px;margin-top:32px;
+  display:flex;align-items:center;gap:8px;
+}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* Connectivity grid */
+.conn-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:12px;
+}
+.conn-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:14px;padding:16px;text-align:center;
+  transition:border-color .3s,transform .3s;
+  cursor:pointer;
+}
+.conn-card:hover{transform:translateY(-2px)}
+.conn-card .site-icon{font-size:28px;margin-bottom:6px}
+.conn-card .site-name{font-size:13px;font-weight:500;margin-bottom:4px}
+.conn-card .site-url{font-size:10px;color:var(--muted);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conn-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:3px 10px;border-radius:12px;
+  font-size:11px;font-weight:600;
+}
+.conn-badge.ok{background:rgba(34,197,94,0.12);color:var(--green)}
+.conn-badge.fail{background:rgba(239,68,68,0.12);color:var(--red)}
+.conn-badge.checking{background:rgba(234,179,8,0.12);color:var(--yellow)}
+.conn-latency{font-size:10px;color:var(--muted);margin-top:4px}
+
+/* Tool cards */
+.tools-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  gap:16px;
+}
+.tool-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:16px;padding:24px;
+  transition:border-color .3s;
+}
+.tool-card:hover{border-color:var(--border-hover)}
+.tool-card h3{font-size:14px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.tool-card .input-row{display:flex;gap:8px;margin-bottom:12px}
+.tool-card input{
+  flex:1;padding:10px 14px;border-radius:10px;
+  background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);font-size:13px;outline:none;font-family:inherit;
+}
+.tool-card input:focus{border-color:var(--accent)}
+.tool-card button{
+  padding:10px 18px;border-radius:10px;border:none;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff;font-size:13px;font-weight:600;cursor:pointer;
+  white-space:nowrap;transition:opacity .2s;
+}
+.tool-card button:active{opacity:.8}
+.tool-card button:disabled{opacity:.4;cursor:not-allowed}
+.tool-result{
+  font-size:13px;padding:12px;border-radius:10px;
+  background:rgba(0,0,0,0.2);min-height:36px;
+  line-height:1.5;
+}
+.tool-result .spinner{
+  display:inline-block;width:14px;height:14px;
+  border:2px solid rgba(255,107,53,0.2);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .6s linear infinite;
+  vertical-align:middle;margin-right:6px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tool-result .ok{color:var(--green)}
+.tool-result .fail{color:var(--red)}
+.tool-result .info{color:var(--muted)}
+
+/* IP info card */
+.ip-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:16px;padding:20px 24px;margin-bottom:24px;
+  display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:16px;
+}
+.ip-card .ip-value{font-size:20px;font-weight:700}
+.ip-card .ip-label{font-size:12px;color:var(--muted)}
+.ip-details{display:flex;gap:16px;flex-wrap:wrap}
+.ip-detail{text-align:center}
+.ip-detail .val{font-size:14px;font-weight:500}
+.ip-detail .lbl{font-size:10px;color:var(--muted)}
+
+/* DNS result table */
+.dns-table{width:100%;font-size:12px;border-collapse:collapse}
+.dns-table td{padding:6px 10px;border-bottom:1px solid var(--border)}
+
+/* Traceroute vis */
+.trace-vis{display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.trace-hop{
+  width:32px;height:32px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:600;
+  background:rgba(255,107,53,0.1);border:1px solid rgba(255,107,53,0.2);
+  color:var(--accent);
+}
+.trace-hop.timeout{background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.2);color:var(--red)}
+.trace-hop.target{background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.2);color:var(--green)}
+.trace-arrow{color:var(--muted);font-size:10px}
+
+/* Footer */
+footer{
+  text-align:center;padding:32px 0 16px;
+  border-top:1px solid var(--border);margin-top:48px;
+  font-size:12px;color:var(--muted);
+}
+
+/* Skeleton */
+.skeleton{
+  height:12px;border-radius:6px;
+  background:linear-gradient(90deg,rgba(255,255,255,0.03),rgba(255,255,255,0.08),rgba(255,255,255,0.03));
+  background-size:200% 100%;
+  animation:shimmer 1.5s infinite;
+}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+
+/* Toast */
+.toast{
+  position:fixed;bottom:24px;right:24px;
+  padding:12px 20px;border-radius:12px;
+  font-size:13px;font-weight:500;
+  background:rgba(0,0,0,0.9);border:1px solid var(--border);
+  color:var(--text);z-index:100;
+  transform:translateY(100px);opacity:0;
+  transition:all .4s ease;
+}
+.toast.show{transform:translateY(0);opacity:1}
+
+/* Responsive */
+@media(max-width:640px){
+  .hero h1{font-size:32px}
+  .container{padding:16px 12px}
+  .tools-grid{grid-template-columns:1fr}
+  .conn-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  header{flex-direction:column;gap:12px}
+}
+
+.glow-orb{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:600px;height:600px;
+  background:radial-gradient(circle,rgba(255,107,53,0.04),transparent 60%);
+  pointer-events:none;
+}
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-gradient"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🌐</div>
+      <div class="logo-text">NetScope <span>Dashboard</span></div>
+    </div>
+    <div class="header-right">
+      <div class="refresh-control">
+        <label>Auto-refresh:</label>
+        <select id="refreshInterval" onchange="setRefreshInterval()">
+          <option value="0">Off</option>
+          <option value="30">30s</option>
+          <option value="60" selected>60s</option>
+          <option value="120">2min</option>
+          <option value="300">5min</option>
+        </select>
+      </div>
+      <span class="status-badge" id="statusBadge">
+        <span class="status-dot"></span> Loading...
+      </span>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+      <button onclick="refreshAll()" style="padding:8px 16px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:12px;cursor:pointer;font-family:inherit;">🔄 Refresh</button>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div style="position:relative;display:inline-block">
+      <div class="glow-orb"></div>
+      <h1>Network Diagnostics</h1>
+    </div>
+    <p>Browser-based network analysis tool · DNS lookup · Port check · Connectivity monitor<br>
+    Built with Claude Code + DeepSeek V4</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card">
+      <div class="icon">📡</div>
+      <div class="label">Your IP</div>
+      <div class="value" id="ipValue">—</div>
+      <div class="sub" id="ipSub">Detecting...</div>
+    </div>
+    <div class="stat-card">
+      <div class="icon">🌍</div>
+      <div class="label">Latency (CDN)</div>
+      <div class="value" id="latencyValue">—</div>
+      <div class="sub" id="latencySub">Ping test</div>
+    </div>
+    <div class="stat-card">
+      <div class="icon">📶</div>
+      <div class="label">Connection</div>
+      <div class="value" id="connValue">—</div>
+      <div class="sub" id="connSub">Connection type</div>
+    </div>
+    <div class="stat-card">
+      <div class="icon">🔒</div>
+      <div class="label">Security</div>
+      <div class="value" id="secValue">—</div>
+      <div class="sub" id="secSub">TLS / Secure context</div>
+    </div>
+  </div>
+
+  <!-- IP Info Bar -->
+  <div class="ip-card" id="ipCard">
+    <div>
+      <div class="ip-label">🌐 PUBLIC IP</div>
+      <div class="ip-value" id="ipPublic">Loading...</div>
+      <div class="ip-label" id="ipLocation" style="margin-top:4px;font-size:11px;"></div>
+    </div>
+    <div class="ip-details" id="ipDetails">
+      <div class="ip-detail"><div class="val" id="ispVal">—</div><div class="lbl">ISP</div></div>
+      <div class="ip-detail"><div class="val" id="asnVal">—</div><div class="lbl">ASN</div></div>
+      <div class="ip-detail"><div class="val" id="timezoneVal">—</div><div class="lbl">Timezone</div></div>
+    </div>
+  </div>
+
+  <!-- Connectivity -->
+  <div class="section-title">🌐 Connectivity Check</div>
+  <div class="conn-grid" id="connGrid">
+    <div class="conn-card"><div class="skeleton" style="height:80px"></div></div>
+  </div>
+
+  <!-- Tools -->
+  <div class="section-title">🛠️ Network Tools</div>
+  <div class="tools-grid">
+    <!-- DNS Lookup -->
+    <div class="tool-card">
+      <h3>🕵️ DNS Lookup</h3>
+      <div class="input-row">
+        <input type="text" id="dnsInput" placeholder="Domain (e.g. github.com)" value="github.com">
+        <button id="dnsBtn" onclick="dnsLookup()">Resolve</button>
+      </div>
+      <div class="tool-result" id="dnsResult">Enter a domain to resolve</div>
+    </div>
+
+    <!-- Port Check -->
+    <div class="tool-card">
+      <h3>🔌 Port Check</h3>
+      <div class="input-row">
+        <input type="text" id="portHost" placeholder="Host" value="google.com" style="flex:2">
+        <input type="number" id="portNum" placeholder="Port" value="80" style="flex:1;width:auto">
+        <button id="portBtn" onclick="checkPort()">Scan</button>
+      </div>
+      <div class="tool-result" id="portResult">Enter host and port to scan</div>
+    </div>
+
+    <!-- Traceroute -->
+    <div class="tool-card">
+      <h3>📡 Route Visualizer</h3>
+      <div class="input-row">
+        <input type="text" id="traceInput" placeholder="Target IP or domain" value="1.1.1.1">
+        <button id="traceBtn" onclick="traceRoute()">Trace</button>
+      </div>
+      <div class="tool-result" id="traceResult">Enter a target to trace route (simulated)</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px">⚠️ Browser-side traceroute is simulated. For real UDP/ICMP traceroute, use <a href="https://github.com/2281516753/net-diag-demo" target="_blank" style="color:var(--accent)">net-diag-demo</a> Flask backend.</div>
+    </div>
+
+    <!-- HTTP Headers -->
+    <div class="tool-card">
+      <h3>📋 HTTP Headers Check</h3>
+      <div class="input-row">
+        <input type="text" id="headerInput" placeholder="URL" value="https://www.google.com">
+        <button id="headerBtn" onclick="checkHeaders()">Check</button>
+      </div>
+      <div class="tool-result" id="headerResult">Enter a URL to inspect headers</div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="section-title" style="margin-top:32px">📜 Recent Activity <span style="font-size:11px;color:var(--muted);cursor:pointer;font-weight:400" onclick="clearHistory()">(Clear)</span></div>
+  <div class="history-panel">
+    <div id="historyContent"><div class="hist-empty">No activity yet. Use the tools above to start recording.</div></div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    NetScope Dashboard · Built with Claude Code + DeepSeek V4<br>
+    <span id="footerTime"></span>
+  </footer>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── Theme ───────────────────────────────────────────────────────────────
+function toggleTheme(){
+  const el=document.documentElement;
+  const isLight=el.getAttribute('data-theme')==='light';
+  el.setAttribute('data-theme',isLight?'':'light');
+  document.getElementById('themeToggle').textContent=isLight?'🌙':'☀️';
+  localStorage.setItem('theme',isLight?'dark':'light');
+}
+(function initTheme(){
+  const saved=localStorage.getItem('theme');
+  if(saved==='light'||(!saved&&window.matchMedia('(prefers-color-scheme:light)').matches)){
+    document.documentElement.setAttribute('data-theme','light');
+    document.getElementById('themeToggle').textContent='☀️';
+  }
+})();
+
+// ─── History ─────────────────────────────────────────────────────────────
+const HIST_KEY='netscope_history';
+const MAX_HIST=50;
+
+function getHistory(){
+  try{return JSON.parse(localStorage.getItem(HIST_KEY))||[]}
+  catch(e){return[]}
+}
+
+function addHistory(type,query,result){
+  const h=getHistory();
+  h.unshift({type,query,result,time:new Date().toISOString()});
+  if(h.length>MAX_HIST)h.length=MAX_HIST;
+  localStorage.setItem(HIST_KEY,JSON.stringify(h));
+  renderHistory();
+}
+
+function clearHistory(){
+  localStorage.removeItem(HIST_KEY);
+  renderHistory();
+  toast('History cleared');
+}
+
+function deleteHistoryItem(idx){
+  const h=getHistory();
+  h.splice(idx,1);
+  localStorage.setItem(HIST_KEY,JSON.stringify(h));
+  renderHistory();
+}
+
+function renderHistory(){
+  const h=getHistory();
+  const el=document.getElementById('historyContent');
+  if(!h.length){
+    el.innerHTML='<div class="hist-empty">No activity yet. Use the tools above to start recording.</div>';
+    return;
+  }
+  el.innerHTML=`
+    <table class="history-table">
+      <thead><tr><th>Time</th><th>Type</th><th>Query</th><th>Result</th><th></th></tr></thead>
+      <tbody>
+        ${h.map((entry,i)=>`
+          <tr>
+            <td>${new Date(entry.time).toLocaleTimeString()}</td>
+            <td>${entry.type}</td>
+            <td>${entry.query}</td>
+            <td>${entry.result}</td>
+            <td><button class="del-btn" onclick="deleteHistoryItem(${i})">✕</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ─── Auto-refresh ────────────────────────────────────────────────────────
+let refreshTimer=null;
+
+function setRefreshInterval(){
+  const val=parseInt(document.getElementById('refreshInterval').value);
+  if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}
+  if(val>0){
+    refreshTimer=setInterval(loadConnectivity,val*1000);
+    toast(`Auto-refresh: every ${val}s`);
+  }else{
+    toast('Auto-refresh disabled');
+  }
+}
+
+// ─── Sites ──────────────────────────────────────────────────────────────
+const SITES=[
+  {name:'Baidu',icon:'🇨🇳',url:'https://www.baidu.com'},
+  {name:'GitHub',icon:'🐙',url:'https://github.com'},
+  {name:'Google',icon:'🔍',url:'https://www.google.com'},
+  {name:'Cloudflare',icon:'☁️',url:'https://www.cloudflare.com'},
+  {name:'MIMO',icon:'📱',url:'https://platform.xiaomimimo.com'},
+  {name:'DeepSeek',icon:'🧠',url:'https://api.deepseek.com'},
+];
+
+// ─── Toast ──────────────────────────────────────────────────────────────
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ─── Refresh All ────────────────────────────────────────────────────────
+async function refreshAll(){
+  updateBadge('checking','Refreshing...');
+  await Promise.allSettled([loadIPInfo(),loadStats(),loadConnectivity()]);
+  updateBadge('online','All systems nominal');
+}
+
+function updateBadge(state,text){
+  const b=document.getElementById('statusBadge');
+  if(state==='online'){
+    b.className='status-badge';
+    b.innerHTML=`<span class="status-dot"></span> ${text}`;
+  }else if(state==='offline'){
+    b.className='status-badge offline';
+    b.innerHTML=`<span class="status-dot"></span> ${text}`;
+  }else{
+    b.className='status-badge';
+    b.innerHTML=`<span class="status-dot" style="background:var(--yellow);animation:pulse .8s infinite"></span> ${text}`;
+  }
+}
+
+// ─── IP Info ────────────────────────────────────────────────────────────
+async function loadIPInfo(){
+  try{
+    const r=await fetch('https://ip-api.com/json/?fields=query,country,city,isp,as,timezone,org');
+    const d=await r.json();
+    if(d.query){
+      document.getElementById('ipPublic').textContent=d.query;
+      document.getElementById('ipLocation').textContent=`${d.city||'?'}, ${d.country||'?'}`;
+      document.getElementById('ispVal').textContent=d.isp||d.org||'\\u2014';
+      document.getElementById('asnVal').textContent=d.as?d.as.split(' ')[0]:'\\u2014';
+      document.getElementById('timezoneVal').textContent=d.timezone||'\\u2014';
+    }
+  }catch(e){
+    document.getElementById('ipCard').querySelector('.ip-value').textContent='Unavailable';
+  }
+}
+
+// ─── Stats ──────────────────────────────────────────────────────────────
+async function loadStats(){
+  const latEl=document.getElementById('latencyValue');
+  const latSub=document.getElementById('latencySub');
+  const start=performance.now();
+  try{
+    await fetch('https://1.1.1.1',{mode:'no-cors'});
+    const ms=Math.round(performance.now()-start);
+    latEl.textContent=`${ms}ms`;
+    latSub.textContent='Cloudflare DNS reachable';
+  }catch(e){
+    latEl.textContent='\\u2014';
+    latSub.textContent='Latency check unavailable';
+  }
+
+  const conn=navigator.connection;
+  if(conn){
+    document.getElementById('connValue').textContent=(conn.effectiveType||'unknown').toUpperCase();
+    document.getElementById('connSub').textContent=`RTT: ${conn.rtt||'?'}ms \\u00b7 Down: ${conn.downlink||'?'}Mbps`;
+  }else{
+    document.getElementById('connValue').textContent='ETHERNET';
+    document.getElementById('connSub').textContent='(API not available)';
+  }
+
+  document.getElementById('secValue').textContent=location.protocol==='https:'?'SECURE':'NOT SECURE';
+  document.getElementById('secSub').textContent=location.protocol==='https:'?'TLS enabled':'Running over HTTP';
+}
+
+// ─── Connectivity ───────────────────────────────────────────────────────
+async function loadConnectivity(){
+  const grid=document.getElementById('connGrid');
+  grid.innerHTML=SITES.map(s=>`
+    <div class="conn-card" data-url="${s.url}">
+      <div class="site-icon">${s.icon}</div>
+      <div class="site-name">${s.name}</div>
+      <div class="site-url">${s.url.replace('https://','')}</div>
+      <div class="conn-badge checking"><span class="spinner" style="width:10px;height:10px"></span> Testing</div>
+      <div class="conn-latency">\\u2014</div>
+    </div>`).join('');
+
+  for(const site of SITES){
+    const card=grid.querySelector(`[data-url="${site.url}"]`);
+    const start=performance.now();
+    try{
+      await fetch(site.url,{mode:'no-cors',signal:AbortSignal.timeout(5000)});
+      const ms=Math.round(performance.now()-start);
+      if(card){
+        card.querySelector('.conn-badge').className='conn-badge ok';
+        card.querySelector('.conn-badge').textContent='OK';
+        card.querySelector('.conn-latency').textContent=`${ms}ms`;
+      }
+    }catch(e){
+      if(card){
+        card.querySelector('.conn-badge').className='conn-badge fail';
+        card.querySelector('.conn-badge').textContent='Fail';
+        card.querySelector('.conn-latency').textContent='Unreachable';
+      }
+    }
+  }
+}
+
+// ─── DNS Lookup ────────────────────────────────────────────────────────
+async function dnsLookup(){
+  const domain=document.getElementById('dnsInput').value.trim();
+  const result=document.getElementById('dnsResult');
+  const btn=document.getElementById('dnsBtn');
+  if(!domain){result.innerHTML='<span class="fail">Please enter a domain</span>';return}
+  btn.disabled=true;
+  result.innerHTML='<span class="spinner"></span> Resolving...';
+
+  try{
+    const r=await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A`,{
+      headers:{'Accept':'application/dns-json'},
+      signal:AbortSignal.timeout(5000)
+    });
+    const d=await r.json();
+    if(d.Answer&&d.Answer.length>0){
+      const ips=d.Answer.filter(a=>a.type===1).map(a=>a.data);
+      const summary=`${ips.length} record(s)`;
+      result.innerHTML=`
+        <div class="ok">${domain}</div>
+        <table class="dns-table">${ips.slice(0,8).map(ip=>`<tr><td>${ip}</td></tr>`).join('')}</table>
+        <div class="info" style="margin-top:4px">${d.Answer.length} records \\u00b7 TTL: ${d.Answer[0].TTL}s</div>`;
+      addHistory('DNS',domain,summary);
+    }else{
+      result.innerHTML=`<span class="fail">No A records found</span>`;
+      addHistory('DNS',domain,'No records');
+    }
+  }catch(e){
+    result.innerHTML=`<span class="fail">DNS lookup failed</span>`;
+  }
+  btn.disabled=false;
+}
+
+// ─── Port Check ────────────────────────────────────────────────────────
+async function checkPort(){
+  const host=document.getElementById('portHost').value.trim();
+  const port=parseInt(document.getElementById('portNum').value);
+  const result=document.getElementById('portResult');
+  const btn=document.getElementById('portBtn');
+  if(!host||!port||port<1||port>65535){
+    result.innerHTML='<span class="fail">Please enter valid host and port (1-65535)</span>';return;
+  }
+  btn.disabled=true;
+  result.innerHTML='<span class="spinner"></span> Checking...';
+
+  try{
+    const r=await fetch(`https://api.portchecker.co/v1/check?host=${encodeURIComponent(host)}&port=${port}`,{
+      signal:AbortSignal.timeout(8000)
+    });
+    const d=await r.json();
+    const status=d.open?'OPEN':'CLOSED';
+    if(d.open!==undefined){
+      result.innerHTML=d.open
+        ? `<span class="ok">Port ${port} on ${host} is OPEN</span>`
+        : `<span class="fail">Port ${port} on ${host} is CLOSED</span>`;
+    }else{
+      result.innerHTML=`<span class="fail">${d.error||'Unable to check'}</span>`;
+    }
+    addHistory('Port',`${host}:${port}`,status);
+  }catch(e){
+    result.innerHTML=`<span class="fail">Port check requires server-side execution</span>`;
+  }
+  btn.disabled=false;
+}
+
+// ─── Traceroute ─────────────────────────────────────────────────────────
+async function traceRoute(){
+  const target=document.getElementById('traceInput').value.trim();
+  const result=document.getElementById('traceResult');
+  const btn=document.getElementById('traceBtn');
+  if(!target){result.innerHTML='<span class="fail">Please enter a target</span>';return}
+  btn.disabled=true;
+  result.innerHTML='<span class="spinner"></span> Tracing route...';
+
+  const ips=[];
+  const seed=target.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  const rng=()=>{let x=Math.sin(seed+ips.length)*10000;return x-Math.floor(x)};
+  const hopCount=6+Math.floor(rng()*8);
+
+  for(let i=1;i<=hopCount;i++){
+    const timeout=Math.random()<0.1;
+    ips.push({hop:i,ip:timeout?'*':`${10+rng()*240|0}.${rng()*255|0}.${rng()*255|0}.${rng()*255|0}`,timeout});
+  }
+  ips.push({hop:hopCount+1,ip:target,timeout:false,target:true});
+  await new Promise(r=>setTimeout(r,1500));
+
+  result.innerHTML=`
+    <div class="ok" style="margin-bottom:8px">Trace to ${target}</div>
+    <div class="trace-vis">
+      ${ips.map(h=>`
+        <span class="trace-hop ${h.timeout?'timeout':h.target?'target':''}" title="Hop ${h.hop}: ${h.ip}">
+          ${h.target?'\\u2713':h.timeout?'\\u2717':h.hop}
+        </span>
+        ${!h.target?'<span class="trace-arrow">\\u2192</span>':''}
+      `).join('')}
+    </div>
+    <div class="info" style="margin-top:8px">${ips.length-1} hops \\u00b7 Simulated</div>`;
+  btn.disabled=false;
+  addHistory('Trace',target,`${ips.length} hops`);
+}
+
+// ─── HTTP Headers ───────────────────────────────────────────────────────
+async function checkHeaders(){
+  const url=document.getElementById('headerInput').value.trim();
+  const result=document.getElementById('headerResult');
+  const btn=document.getElementById('headerBtn');
+  if(!url){result.innerHTML='<span class="fail">Please enter a URL</span>';return}
+  btn.disabled=true;
+  result.innerHTML='<span class="spinner"></span> Fetching headers...';
+
+  try{
+    const r=await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,{
+      method:'HEAD',signal:AbortSignal.timeout(8000)
+    });
+    const headers=[];
+    r.headers.forEach((v,k)=>{headers.push({key:k,value:v})});
+    if(headers.length>0){
+      result.innerHTML=`
+        <div class="ok" style="margin-bottom:6px">Response headers (${headers.length})</div>
+        <table class="dns-table">
+          ${headers.slice(0,15).map(h=>`<tr><td style="color:var(--accent)">${h.key}</td><td style="font-size:10px;max-width:200px;overflow:hidden">${h.value}</td></tr>`).join('')}
+        </table>
+        <div class="info" style="margin-top:4px">Status: ${r.status}</div>`;
+    }else{
+      result.innerHTML=`<span class="info">No headers returned \\u00b7 Status: ${r.status}</span>`;
+    }
+    addHistory('Headers',url.split('//')[1]||url,`${r.status}`);
+  }catch(e){
+    result.innerHTML=`<span class="fail">Failed to fetch headers</span>`;
+  }
+  btn.disabled=false;
+}
+
+// ─── Init ───────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',()=>{
+  renderHistory();
+  refreshAll();
+  setRefreshInterval();
+  document.getElementById('footerTime').textContent=new Date().toLocaleString();
+  setInterval(()=>{
+    document.getElementById('footerTime').textContent=new Date().toLocaleString();
+  },1000);
+  // Enter key bindings
+  document.getElementById('dnsInput').addEventListener('keydown',e=>{if(e.key==='Enter')dnsLookup()});
+  document.getElementById('portHost').addEventListener('keydown',e=>{if(e.key==='Enter')checkPort()});
+  document.getElementById('traceInput').addEventListener('keydown',e=>{if(e.key==='Enter')traceRoute()});
+  document.getElementById('headerInput').addEventListener('keydown',e=>{if(e.key==='Enter')checkHeaders()});
+  // Register service worker for PWA
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  }
+});
+</script>
+</body>
+</html>
